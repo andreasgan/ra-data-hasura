@@ -33,6 +33,7 @@ export {
 };
 import buildQuery from './buildQuery';
 import buildVariables from './buildVariables';
+export { createId, parseId } from './util/base64Ids';
 
 export { buildQuery, buildGqlQuery, buildVariables };
 

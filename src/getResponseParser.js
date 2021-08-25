@@ -1,3 +1,5 @@
+import base64url from 'base64url';
+import { HttpError } from 'ra-core';
 import {
   GET_LIST,
   GET_MANY,
@@ -9,9 +11,12 @@ import {
   UPDATE_MANY,
   DELETE_MANY,
 } from './fetchActions';
+import { createId } from './util/base64Ids';
 
-const sanitizeResource = (data = {}) => {
-  const result = Object.keys(data).reduce((acc, key) => {
+const getSanitizeResource = (primaryKeys) => (data) => {
+  if (data == null) return undefined;
+  var sanitizeResource = getSanitizeResource(primaryKeys);
+  var result = Object.keys(data).reduce((acc, key) => {
     if (key.startsWith('_')) {
       return acc;
     }
@@ -51,19 +56,31 @@ const sanitizeResource = (data = {}) => {
         [key]: sanitizeResource(dataKey),
       };
     }
-
     return { ...acc, [key]: dataKey };
   }, {});
+
+  if (primaryKeys.every(pk => result[pk.name] != null)) {
+    let id = {};
+    primaryKeys.map((pk) => {
+      id[pk.name] = result[pk.name];
+    });
+    result._originalId = result.id;
+    result.id = createId(id);
+  }
+  console.log(result);
 
   return result;
 };
 
 export default (introspectionResults) => (aorFetchType, resource) => (res) => {
   const response = res.data;
+  const primaryKeys = introspectionResults.types.find(obj => obj.name === `${resource.type.name}_pk_columns_input`).inputFields;
+  var sanitizeResource = getSanitizeResource(primaryKeys);
 
   switch (aorFetchType) {
     case GET_MANY_REFERENCE:
     case GET_LIST:
+      if(response.items.length == 0) throw new HttpError("Empty response", 404);
       return {
         data: response.items.map(sanitizeResource),
         total: response.total.aggregate.count,
@@ -73,11 +90,13 @@ export default (introspectionResults) => (aorFetchType, resource) => (res) => {
       return { data: response.items.map(sanitizeResource) };
 
     case GET_ONE:
+      if(response.returning.length == 0) throw new HttpError("Empty response", 404);
       return { data: sanitizeResource(response.returning[0]) };
 
     case CREATE:
     case UPDATE:
     case DELETE:
+      if(response.data.returning.length == 0) throw new HttpError("Empty response", 404);
       return { data: sanitizeResource(response.data.returning[0]) };
 
     case UPDATE_MANY:

@@ -15,6 +15,7 @@ import {
 const SPLIT_TOKEN = '#';
 
 import getFinalType from './getFinalType';
+import { parseId } from './util/base64Ids';
 
 const buildGetListVariables = (introspectionResults) => (
   resource,
@@ -180,6 +181,34 @@ const typeAwareKeyValueReducer = (introspectionResults, resource, params) => (
     : acc;
 };
 
+const buildPKWhereClause = (introspectionResults) => (
+  resource,
+  aorFetchType,
+  params,
+  queryType
+) => {
+  console.log(params);
+  var pk = params.id ? params.id 
+            : params.data ? params.data.id 
+            : undefined;
+  var primaryKeys = parseId(pk);
+  console.log(primaryKeys)
+  let andFilters = [];
+  for (var primaryKey of Object.keys(primaryKeys)) {
+    andFilters.push({
+      [primaryKey]: {
+        _eq: primaryKeys[primaryKey]
+      }
+    });
+  }
+
+  console.log(andFilters);
+  
+  return {
+    _and: andFilters
+  };
+};
+
 const buildUpdateVariables = (introspectionResults) => (
   resource,
   aorFetchType,
@@ -255,6 +284,7 @@ export default (introspectionResults) => (
   params,
   queryType
 ) => {
+  var primaryKeys = introspectionResults.types.find(obj => obj.name === `${resource.type.name}_pk_columns_input`).inputFields;
   switch (aorFetchType) {
     case GET_LIST:
       return buildGetListVariables(introspectionResults)(
@@ -289,18 +319,33 @@ export default (introspectionResults) => (
     case GET_MANY:
     case DELETE_MANY:
       return {
-        where: { id: { _in: params.ids } },
+        where: buildPKWhereClause(introspectionResults)(
+          resource,
+          aorFetchType,
+          params,
+          queryType
+        ),
       };
 
     case GET_ONE:
       return {
-        where: { id: { _eq: params.id } },
+        where: buildPKWhereClause(introspectionResults)(
+          resource,
+          aorFetchType,
+          params,
+          queryType
+        ),
         limit: 1,
       };
 
     case DELETE:
       return {
-        where: { id: { _eq: params.id } },
+        where: buildPKWhereClause(introspectionResults)(
+          resource,
+          aorFetchType,
+          params,
+          queryType
+        ),
       };
     case CREATE:
       return {
@@ -313,6 +358,7 @@ export default (introspectionResults) => (
       };
 
     case UPDATE:
+      console.log(introspectionResults)
       return {
         _set: buildUpdateVariables(introspectionResults)(
           resource,
@@ -320,7 +366,12 @@ export default (introspectionResults) => (
           params,
           queryType
         ),
-        where: { id: { _eq: params.id } },
+        where: buildPKWhereClause(introspectionResults)(
+          resource,
+          aorFetchType,
+          params,
+          queryType
+        ),
       };
 
     case UPDATE_MANY:
